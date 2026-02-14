@@ -1,16 +1,18 @@
-import React from "react";
-import { FaAngleDown } from "react-icons/fa";
-import FoodSection from "./components/FoodSection.jsx";
-import Login from "./components/Login.jsx";
+import { Routes, Route } from "react-router-dom"
+import { FaAngleDown } from "react-icons/fa"
 
-const App = () => {
+import FoodSection from "./components/FoodSection"
+import Login from "./components/Login"
+import Signup from "./components/Signup"
+import Home from "./pages/Home"
+
+const Landing = () => {
   return (
     <>
       <section className="relative w-full min-h-screen overflow-hidden">
-
         {/* Background Video */}
         <video
-          className="absolute top-0 left-0 w-full h-full object-cover z-0 "
+          className="absolute top-0 left-0 w-full h-full object-cover z-0"
           autoPlay
           loop
           muted
@@ -19,9 +21,8 @@ const App = () => {
           <source src="/videos/food.mp4" type="video/mp4" />
         </video>
 
-        {/* dark overlay */}
-        <div className="absolute top-0 left-0 w-full h-full bg-black/35">
-        </div>
+        {/* Dark overlay */}
+        <div className="absolute top-0 left-0 w-full h-full bg-black/35"></div>
 
         {/* Content */}
         <div className="relative z-10 flex flex-col items-center justify-center min-h-screen text-white">
@@ -37,18 +38,25 @@ const App = () => {
         {/* Scroll Indicator */}
         <div className="absolute bottom-6 w-full flex flex-col items-center z-10 text-white animate-bounce">
           <h4>Scroll down</h4>
-          <div className="flex flex-col items-center ">
-            <FaAngleDown/>
-            <FaAngleDown/>
-          </div>
+          <FaAngleDown />
+          <FaAngleDown />
         </div>
-
       </section>
 
       <FoodSection />
-      <Login/>
     </>
-  );
-};
+  )
+}
 
-export default App;
+const App = () => {
+  return (
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+      <Route path="/home" element={<Home />} />
+    </Routes>
+  )
+}
+
+export default App

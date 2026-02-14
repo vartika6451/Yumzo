@@ -2,28 +2,32 @@ import React, { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { ScrollAnimation } from "./ScrollAnimation"
 
-const Login = () => {
+const Signup = () => {
   const { ref, visible } = ScrollAnimation()
   const navigate = useNavigate()
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
 
-  const handleLogin = (e) => {
+  const handleSignup = (e) => {
     e.preventDefault()
 
     const users = JSON.parse(localStorage.getItem("users")) || []
 
-    const foundUser = users.find(
-      (u) => u.email === email && u.password === password
-    )
+    // check if user already exists
+    const userExists = users.find((u) => u.email === email)
 
-    if (foundUser) {
-      localStorage.setItem("loggedInUser", email)
-      navigate("/home")   // go to home(main website)
-    } else {
-      alert("Wrong email or password")
+    if (userExists) {
+      alert("User already exists. Please login.")
+      return
     }
+
+    // add new user
+    users.push({ email, password })
+    localStorage.setItem("users", JSON.stringify(users))
+
+    alert("Signup successful! Please login.")
+    navigate("/login")
   }
 
   return (
@@ -35,14 +39,14 @@ const Login = () => {
         }`}
       >
         <h2 className="text-3xl font-bold text-gray-800 text-center">
-          Welcome!👋
+          Create Account ✨
         </h2>
 
         <p className="text-gray-500 text-center mt-2">
-          Sign in to end up starving 🍔
+          Sign up to start ordering 🍕
         </p>
 
-        <form onSubmit={handleLogin} className="mt-8 space-y-6">
+        <form onSubmit={handleSignup} className="mt-8 space-y-6">
           <div>
             <label className="block text-sm font-semibold text-gray-600">
               Email
@@ -53,6 +57,7 @@ const Login = () => {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               className="w-full mt-2 px-4 py-3 rounded-lg border"
+              required
             />
           </div>
 
@@ -66,31 +71,30 @@ const Login = () => {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="********"
               className="w-full mt-2 px-4 py-3 rounded-lg border"
+              required
             />
           </div>
 
           <button
             type="submit"
-            className="w-full py-3 mt-4 rounded-lg bg-blue-500 text-white font-bold"
+            className="w-full py-3 mt-4 rounded-lg bg-blue-500 text-white font-bold hover:bg-blue-700 transition"
           >
-            Sign In
+            Sign Up
           </button>
-
-          <p className="text-sm text-gray-500 text-center mt-6">
-  Don’t have an account?{" "}
-  <span
-    onClick={() => navigate("/signup")}
-    className="text-blue-500 font-semibold cursor-pointer hover:underline"
-  >
-    Sign up
-  </span>
-</p>
-
         </form>
+
+        <p className="text-sm text-gray-500 text-center mt-6">
+          Already have an account?{" "}
+          <span
+            onClick={() => navigate("/login")}
+            className="text-blue-500 font-semibold cursor-pointer hover:underline"
+          >
+            Login
+          </span>
+        </p>
       </div>
     </div>
   )
 }
 
-export default Login
-
+export default Signup
