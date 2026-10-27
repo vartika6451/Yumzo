@@ -21,6 +21,10 @@ import {
   japaneseItems,
   italianItems
 } from "../../data/menu";
+import useCartStore from "../../store/useCartStore";
+import useAuthStore from "../../store/useAuthStore";
+import { getMenuItems } from "../../services/foodService";
+import Card from "../../components/Card";
 
 const INITIAL_DISHES = [
   {
