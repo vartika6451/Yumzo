@@ -9,6 +9,7 @@
     "build": "next build",
     "start": "node server.js",
     "seed": "node seed.js",
+    "seed:supabase": "node scripts/seed-supabase.js",
     "lint": "next lint"
   },
   "dependencies": {

@@ -15,67 +15,14 @@ import {
   FaTwitter,
   FaYoutube
 } from "react-icons/fa";
-import {
-  indianItems,
-  chineseItems,
-  japaneseItems,
-  italianItems
-} from "../../data/menu";
 import useCartStore from "../../store/useCartStore";
 import useAuthStore from "../../store/useAuthStore";
-import { getMenuItems } from "../../services/foodService";
-import Card from "../../components/Card";
-
-const INITIAL_DISHES = [
-  {
-    id: 'loaded_pizza',
-    name: 'Loaded Cheese Pizza',
-    description: 'Classic delight with extra cheese, olives and fresh veggies.',
-    price: 299,
-    rating: 4.9,
-    time: '20M',
-    image: '/images/pizza.jpg',
-    cuisine: 'Italian',
-    category: 'Pizza'
-  },
-  {
-    id: 'chicken_biryani',
-    name: 'Chicken Biryani',
-    description: 'Fragrant rice, tender chicken and a burst of spices.',
-    price: 349,
-    rating: 4.8,
-    time: '25M',
-    image: '/images/jeerarice.jpg',
-    cuisine: 'Indian',
-    category: 'Main Course'
-  },
-  {
-    id: 'spicy_ramen',
-    name: 'Spicy Ramen Bowl',
-    description: 'A warm, spicy hug in a bowl.',
-    price: 279,
-    rating: 4.7,
-    time: '18M',
-    image: '/images/ramen.jpg',
-    cuisine: 'Japanese',
-    category: 'Main Course'
-  },
-  {
-    id: 'chocolate_cake',
-    name: 'Chocolate Truffle Cake',
-    description: 'Rich, creamy and totally irresistible.',
-    price: 249,
-    rating: 4.9,
-    time: '10M',
-    image: '/images/tiramisu.jpg',
-    cuisine: 'Italian',
-    category: 'Dessert'
-  },
-  ...indianItems.map(item => ({ ...item, cuisine: 'Indian', category: 'Main Course' })),
-  ...chineseItems.map(item => ({ ...item, cuisine: 'Chinese', category: 'Main Course' })),
-  ...japaneseItems.map(item => ({ ...item, cuisine: 'Japanese', category: 'Main Course' })),
-  ...italianItems.map(item => ({ ...item, cuisine: 'Italian', category: 'Main Course' })),
-];
+import { getMenuItems, getRestaurants, getMoods } from "../../services/foodService";
+import FoodGrid from "../../components/FoodGrid";
+import RestaurantCard from "../../components/RestaurantCard";
+import MoodSelector from "../../components/MoodSelector";
+import CategoryFilter from "../../components/CategoryFilter";
+import SearchBar from "../../components/SearchBar";
 
 export default function HomePage() {
   const router = useRouter();
@@ -86,121 +33,135 @@ export default function HomePage() {
   const [selectedMood, setSelectedMood] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [menuItems, setMenuItems] = useState(INITIAL_DISHES);
-  const [loading, setLoading] = useState(false);
+  const [menuItems, setMenuItems] = useState([]);
+  const [restaurants, setRestaurants] = useState([]);
+  const [moodsList, setMoodsList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isDbEmpty, setIsDbEmpty] = useState(false);
   const [isFeastServed, setIsFeastServed] = useState(false);
 
   const feastSectionRef = useRef(null);
   const featuredSectionRef = useRef(null);
+  const restaurantsSectionRef = useRef(null);
 
   // Total items in imaginary feast
   const totalItemsCount = cartItems.reduce((acc, item) => acc + (item.quantity || 1), 0);
 
-  // 1. Fetch menu items from foodService (Supabase or local)
+  // 1. Fetch Supabase Data (Restaurants, Menu Items, Moods)
   useEffect(() => {
     let isMounted = true;
-    async function loadDishes() {
-      const data = await getMenuItems();
-      if (isMounted && data && data.length > 0) {
-        // Merge with initial featured items to ensure first 4 remain featured
-        const featuredNames = new Set(INITIAL_DISHES.slice(0, 4).map(d => d.name));
-        const rest = data.filter(d => !featuredNames.has(d.name));
-        setMenuItems([...INITIAL_DISHES.slice(0, 4), ...rest]);
+
+    async function loadData() {
+      setLoading(true);
+
+      const [itemsRes, restRes, moodsRes] = await Promise.all([
+        getMenuItems(),
+        getRestaurants({ featuredOnly: true }),
+        getMoods()
+      ]);
+
+      if (!isMounted) return;
+
+      const items = itemsRes.data || [];
+      const rests = restRes.data || [];
+      const moods = moodsRes.data || [];
+
+      setMenuItems(items);
+      setRestaurants(rests);
+      if (moods.length > 0) setMoodsList(moods);
+
+      // Check if DB is empty or unconfigured
+      if (items.length === 0 && (!itemsRes.isConfigured || itemsRes.count === 0)) {
+        setIsDbEmpty(true);
+      } else {
+        setIsDbEmpty(false);
       }
+
+      setLoading(false);
     }
-    loadDishes();
-    return () => { isMounted = false; };
+
+    loadData();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Filter tabs
-  const filterTabs = ["All", "Indian", "Pizzas", "Burgers", "Desserts", "Asian"];
+  const filterTabs = ["All", "Pizzas", "Mains", "Starters", "Desserts", "Beverages", "Indian", "Italian", "Chinese", "Japanese"];
 
   // 2. Filter logic based on tab, mood, and search query
   const filteredDishes = menuItems.filter((item) => {
-    // Search query
+    // Search query: matches food name, description, cuisine, or restaurant name
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchesSearch = item.name.toLowerCase().includes(q) || (item.cuisine && item.cuisine.toLowerCase().includes(q));
-      if (!matchesSearch) return false;
+      const matchName = item.name?.toLowerCase().includes(q);
+      const matchDesc = item.description?.toLowerCase().includes(q);
+      const matchCuisine = item.cuisine?.toLowerCase().includes(q);
+      const matchRest = item.restaurantName?.toLowerCase().includes(q);
+      if (!matchName && !matchDesc && !matchCuisine && !matchRest) return false;
     }
 
     // Category / Cuisine tabs
+    if (activeTab === "Pizzas" && !item.name.toLowerCase().includes("pizza") && item.category !== "Pizzas") return false;
+    if (activeTab === "Mains" && item.category !== "Mains") return false;
+    if (activeTab === "Starters" && item.category !== "Starters") return false;
+    if (activeTab === "Desserts" && item.category !== "Desserts") return false;
+    if (activeTab === "Beverages" && item.category !== "Beverages") return false;
     if (activeTab === "Indian" && item.cuisine?.toLowerCase() !== "indian") return false;
-    if (activeTab === "Pizzas" && !item.name.toLowerCase().includes("pizza")) return false;
-    if (activeTab === "Burgers" && !item.name.toLowerCase().includes("burger") && !item.name.toLowerCase().includes("tikki")) return false;
-    if (activeTab === "Desserts" && !["Dessert", "Beverage"].includes(item.category) && !item.name.toLowerCase().includes("cake") && !item.name.toLowerCase().includes("tiramisu") && !item.name.toLowerCase().includes("ice cream") && !item.name.toLowerCase().includes("lassi")) return false;
-    if (activeTab === "Asian" && !["Chinese", "Japanese"].includes(item.cuisine)) return false;
+    if (activeTab === "Italian" && item.cuisine?.toLowerCase() !== "italian") return false;
+    if (activeTab === "Chinese" && item.cuisine?.toLowerCase() !== "chinese") return false;
+    if (activeTab === "Japanese" && item.cuisine?.toLowerCase() !== "japanese") return false;
 
-    // Mood filtering
-    if (selectedMood === "cheesy" && !item.name.toLowerCase().includes("pizza") && !item.name.toLowerCase().includes("pasta") && !item.name.toLowerCase().includes("lasagna")) return false;
-    if (selectedMood === "spicy" && !item.name.toLowerCase().includes("spicy") && !item.name.toLowerCase().includes("kung pao") && !item.name.toLowerCase().includes("manchurian") && !item.name.toLowerCase().includes("tikki") && !item.name.toLowerCase().includes("ramen")) return false;
-    if (selectedMood === "sweet" && !item.name.toLowerCase().includes("cake") && !item.name.toLowerCase().includes("tiramisu") && !item.name.toLowerCase().includes("matcha") && !item.name.toLowerCase().includes("lassi")) return false;
+    // Mood filtering using food_moods junction data
+    if (selectedMood && selectedMood !== "all") {
+      if (item.moods && item.moods.length > 0) {
+        const hasMood = item.moods.some((m) => m.slug.toLowerCase() === selectedMood.toLowerCase());
+        if (!hasMood) return false;
+      } else {
+        // Fallback name matching if moods not yet populated in junction
+        if (selectedMood === "cheesy" && !item.name.toLowerCase().includes("pizza") && !item.name.toLowerCase().includes("pasta") && !item.name.toLowerCase().includes("lasagna") && !item.name.toLowerCase().includes("cheese")) return false;
+        if (selectedMood === "spicy" && !item.name.toLowerCase().includes("spicy") && !item.name.toLowerCase().includes("kung pao") && !item.name.toLowerCase().includes("biryani") && !item.name.toLowerCase().includes("samosa") && !item.name.toLowerCase().includes("ramen")) return false;
+        if (selectedMood === "sweet" && !item.name.toLowerCase().includes("cake") && !item.name.toLowerCase().includes("tiramisu") && !item.name.toLowerCase().includes("matcha") && !item.name.toLowerCase().includes("lassi")) return false;
+        if (selectedMood === "midnight" && !item.is_popular) return false;
+      }
+    }
 
     return true;
   });
 
-  // Mood options
-  const moods = [
-    {
-      id: "cheesy",
-      icon: "🧀",
-      title: "Cheesy",
-      desc: "Everything is better with cheese",
-      bg: "bg-[#FFF3D6] hover:bg-[#FFE9B8] border-[#FFE2A1]",
-    },
-    {
-      id: "spicy",
-      icon: "🌶️",
-      title: "Spicy",
-      desc: "For the heat lovers",
-      bg: "bg-[#FDE8E5] hover:bg-[#FCD7D2] border-[#FBC4BD]",
-    },
-    {
-      id: "midnight",
-      icon: "🌙",
-      title: "Midnight snacks",
-      desc: "For late night cravings",
-      bg: "bg-[#ECEFFE] hover:bg-[#DFE4FD] border-[#D1D9FB]",
-    },
-    {
-      id: "sweet",
-      icon: "🍰",
-      title: "Sweet tooth",
-      desc: "Because dessert is always a good idea",
-      bg: "bg-[#FDE9EF] hover:bg-[#FCD8E3] border-[#FBC4D4]",
-    },
-    {
-      id: "surprise",
-      icon: "🎲",
-      title: "Surprise me!",
-      desc: "Show me something random",
-      bg: "bg-[#E1EDCB] hover:bg-[#D5E6B8] border-[#C2DDA1]",
-    },
-  ];
-
   // Handle Mood Click
-  const handleMoodSelect = (moodId) => {
-    if (moodId === "surprise") {
+  const handleMoodSelect = (moodSlug) => {
+    if (moodSlug === "surprise") {
       if (menuItems.length > 0) {
         const randomItem = menuItems[Math.floor(Math.random() * menuItems.length)];
         addItem({ ...randomItem, quantity: 1 });
         showToast(`🎲 Surprise craving added: ${randomItem.name}!`);
+      } else {
+        showToast('🎲 Pick a dish once data is loaded!');
       }
       return;
     }
-    if (selectedMood === moodId) {
+
+    if (selectedMood === moodSlug) {
       setSelectedMood(null);
     } else {
-      setSelectedMood(moodId);
+      setSelectedMood(moodSlug);
       featuredSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
   // Add Movie Snack Combo
   const handleTryChallenge = () => {
-    addItem({ id: 'pizza_loaded', name: 'Loaded Cheese Pizza', price: 299, image: '/images/pizza.jpg', quantity: 1 });
-    addItem({ id: 'burger_crispy', name: 'Double Cheese Burger', price: 180, image: '/images/burger.png', quantity: 1 });
-    addItem({ id: 'drink_cola', name: 'Chilled Cola Fizz', price: 60, image: '/images/drink.png', quantity: 1 });
+    // Find matching items from loaded menu or notify
+    const pizzaItem = menuItems.find(i => i.name.toLowerCase().includes('pizza')) || menuItems[0];
+    const burgerItem = menuItems.find(i => i.name.toLowerCase().includes('burger')) || menuItems[1];
+    const drinkItem = menuItems.find(i => i.name.toLowerCase().includes('cola') || i.category === 'Beverages') || menuItems[2];
+
+    if (pizzaItem) addItem({ ...pizzaItem, quantity: 1 });
+    if (burgerItem) addItem({ ...burgerItem, quantity: 1 });
+    if (drinkItem) addItem({ ...drinkItem, quantity: 1 });
+
     showToast('🍿 Movie-night snack table combo added to your feast!');
     feastSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -240,23 +201,29 @@ export default function HomePage() {
 
             <nav className="hidden md:flex items-center gap-6 text-sm font-bold text-[#725E5E]">
               <button 
-                onClick={() => { setActiveTab("All"); setSelectedMood(null); }}
-                className="text-[#F65C45] relative pb-1 border-b-2 border-[#F65C45]"
+                onClick={() => { setActiveTab("All"); setSelectedMood(null); featuredSectionRef.current?.scrollIntoView({ behavior: 'smooth' }); }}
+                className="text-[#F65C45] relative pb-1 border-b-2 border-[#F65C45] cursor-pointer"
               >
                 Explore
+              </button>
+              <button 
+                onClick={() => restaurantsSectionRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                className="hover:text-[#2F1D1D] transition-colors cursor-pointer"
+              >
+                Kitchens
               </button>
               <button 
                 onClick={() => {
                   const el = document.getElementById("challenge-section");
                   el?.scrollIntoView({ behavior: 'smooth' });
                 }}
-                className="hover:text-[#2F1D1D] transition-colors"
+                className="hover:text-[#2F1D1D] transition-colors cursor-pointer"
               >
                 Today&apos;s challenge
               </button>
               <button 
                 onClick={() => feastSectionRef.current?.scrollIntoView({ behavior: 'smooth' })}
-                className="hover:text-[#2F1D1D] transition-colors"
+                className="hover:text-[#2F1D1D] transition-colors cursor-pointer"
               >
                 My feast
               </button>
@@ -273,15 +240,15 @@ export default function HomePage() {
                   <FaSearch className="text-[#8C7676] mr-2 text-xs" />
                   <input
                     type="text"
-                    placeholder="Search craving..."
+                    placeholder="Search dishes or restaurants..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     autoFocus
-                    className="bg-transparent outline-none text-xs font-semibold w-32 sm:w-48 text-[#2F1D1D]"
+                    className="bg-transparent outline-none text-xs font-semibold w-36 sm:w-56 text-[#2F1D1D]"
                   />
                   <button 
                     onClick={() => { setIsSearchOpen(false); setSearchQuery(""); }} 
-                    className="text-xs text-[#8C7676] hover:text-[#2F1D1D] ml-1 font-bold"
+                    className="text-xs text-[#8C7676] hover:text-[#2F1D1D] ml-1 font-bold cursor-pointer"
                   >
                     ✕
                   </button>
@@ -289,7 +256,7 @@ export default function HomePage() {
               ) : (
                 <button
                   onClick={() => setIsSearchOpen(true)}
-                  className="w-9 h-9 rounded-full bg-[#FFFCF7] border border-[#F2E5D5] flex items-center justify-center text-[#725E5E] hover:text-[#2F1D1D] hover:bg-white transition-all shadow-sm"
+                  className="w-9 h-9 rounded-full bg-[#FFFCF7] border border-[#F2E5D5] flex items-center justify-center text-[#725E5E] hover:text-[#2F1D1D] hover:bg-white transition-all shadow-sm cursor-pointer"
                   title="Search dishes"
                 >
                   <FaSearch size={13} />
@@ -300,7 +267,7 @@ export default function HomePage() {
             {/* Cart Button */}
             <button
               onClick={toggleCart}
-              className="flex items-center gap-2 bg-[#F65C45] hover:bg-[#E04B35] text-white px-4 py-2 rounded-full font-extrabold text-xs sm:text-sm shadow-md hover:shadow-lg hover:shadow-[#F65C45]/20 active:scale-95 transition-all"
+              className="flex items-center gap-2 bg-[#F65C45] hover:bg-[#E04B35] text-white px-4 py-2 rounded-full font-extrabold text-xs sm:text-sm shadow-md hover:shadow-lg hover:shadow-[#F65C45]/20 active:scale-95 transition-all cursor-pointer"
             >
               <FaShoppingCart size={14} />
               <span>{totalItemsCount} {totalItemsCount === 1 ? 'item' : 'items'}</span>
@@ -361,7 +328,7 @@ export default function HomePage() {
             <div className="flex flex-wrap items-center gap-4 pt-2">
               <button 
                 onClick={() => featuredSectionRef.current?.scrollIntoView({ behavior: 'smooth' })}
-                className="px-7 py-3.5 bg-[#F65C45] text-white font-extrabold text-sm sm:text-base rounded-full hover:bg-[#E04B35] shadow-lg shadow-[#F65C45]/25 hover:shadow-xl hover:shadow-[#F65C45]/35 active:scale-95 transition-all flex items-center gap-2"
+                className="px-7 py-3.5 bg-[#F65C45] text-white font-extrabold text-sm sm:text-base rounded-full hover:bg-[#E04B35] shadow-lg shadow-[#F65C45]/25 hover:shadow-xl hover:shadow-[#F65C45]/35 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
               >
                 <span>Feed my imagination</span>
                 <span className="text-lg">➔</span>
@@ -369,7 +336,7 @@ export default function HomePage() {
 
               <button 
                 onClick={() => { setActiveTab("All"); featuredSectionRef.current?.scrollIntoView({ behavior: 'smooth' }); }}
-                className="px-4 py-3 text-sm sm:text-base font-extrabold text-[#2F1D1D] hover:text-[#F65C45] transition-colors flex items-center gap-1 group"
+                className="px-4 py-3 text-sm sm:text-base font-extrabold text-[#2F1D1D] hover:text-[#F65C45] transition-colors flex items-center gap-1 group cursor-pointer"
               >
                 <span className="underline decoration-2 underline-offset-4 decoration-[#2F1D1D]/30 group-hover:decoration-[#F65C45]">Browse all foods</span>
                 <span className="group-hover:translate-x-1 transition-transform">›</span>
@@ -435,44 +402,51 @@ export default function HomePage() {
 
             <button 
               onClick={() => setSelectedMood(null)}
-              className="text-xs sm:text-sm font-extrabold text-[#F65C45] hover:text-[#2F1D1D] transition-colors flex items-center gap-1"
+              className="text-xs sm:text-sm font-extrabold text-[#F65C45] hover:text-[#2F1D1D] transition-colors flex items-center gap-1 cursor-pointer"
             >
               <span>{selectedMood ? 'Clear filter' : 'See all moods'}</span>
               <span>➔</span>
             </button>
           </div>
 
-          {/* Mood Cards Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-            {moods.map((mood) => {
-              const isSelected = selectedMood === mood.id;
-              return (
-                <div
-                  key={mood.id}
-                  onClick={() => handleMoodSelect(mood.id)}
-                  className={`p-3.5 rounded-2xl border cursor-pointer transition-all duration-300 flex items-start gap-3 select-none ${
-                    isSelected ? 'ring-3 ring-[#F65C45] scale-102 shadow-md' : 'shadow-xs hover:-translate-y-0.5 hover:shadow-sm'
-                  } ${mood.bg}`}
-                >
-                  <span className="text-2xl sm:text-3xl shrink-0 mt-0.5">{mood.icon}</span>
-                  <div>
-                    <h3 className="font-extrabold text-sm text-[#2F1D1D] leading-tight">
-                      {mood.title}
-                    </h3>
-                    <p className="text-[11px] text-[#695656] font-medium mt-0.5 leading-snug">
-                      {mood.desc}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {/* Mood Cards */}
+          <MoodSelector
+            moods={moodsList}
+            selectedMood={selectedMood}
+            onSelectMood={handleMoodSelect}
+          />
 
         </div>
       </section>
 
       {/* ============================================================== */}
-      {/* 4. "FEATURED PICKS FOR YOU" SECTION                            */}
+      {/* 4. FEATURED KITCHENS / RESTAURANTS SECTION                     */}
+      {/* ============================================================== */}
+      {restaurants.length > 0 && (
+        <section ref={restaurantsSectionRef} className="px-4 sm:px-8 lg:px-14 py-10 bg-[#FFF2DE]/50 border-y border-[#F5EAD9]">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex justify-between items-baseline mb-8">
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-black text-[#2F1D1D] tracking-tight">
+                  Featured Kitchens
+                </h2>
+                <p className="text-xs sm:text-sm text-[#7A6464] font-semibold mt-1">
+                  Explore curated imaginary restaurants and their signature menus.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {restaurants.map((rest) => (
+                <RestaurantCard key={rest.id} restaurant={rest} />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ============================================================== */}
+      {/* 5. "FEATURED PICKS FOR YOU" SECTION                            */}
       {/* ============================================================== */}
       <section ref={featuredSectionRef} className="px-4 sm:px-8 lg:px-14 py-10">
         <div className="max-w-7xl mx-auto">
@@ -490,21 +464,11 @@ export default function HomePage() {
 
             {/* Filter Tabs & Arrows */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full">
-              <div className="flex items-center gap-1.5 bg-[#FFF2DE] p-1 rounded-full border border-[#F4E3CD]">
-                {filterTabs.map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-4 py-1.5 rounded-full text-xs font-black transition-all ${
-                      activeTab === tab
-                        ? 'bg-[#FFFCF7] text-[#2F1D1D] shadow-sm'
-                        : 'text-[#7A6464] hover:text-[#2F1D1D]'
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
+              <CategoryFilter
+                categories={filterTabs}
+                activeCategory={activeTab}
+                onSelectCategory={setActiveTab}
+              />
 
               {/* Prev / Next Arrows */}
               <div className="hidden sm:flex items-center gap-1 ml-1">
@@ -513,7 +477,8 @@ export default function HomePage() {
                     const idx = filterTabs.indexOf(activeTab);
                     setActiveTab(filterTabs[(idx - 1 + filterTabs.length) % filterTabs.length]);
                   }}
-                  className="w-8 h-8 rounded-full bg-[#FFFCF7] border border-[#F2E5D5] flex items-center justify-center text-[#725E5E] hover:text-[#2F1D1D] transition shadow-xs"
+                  className="w-8 h-8 rounded-full bg-[#FFFCF7] border border-[#F2E5D5] flex items-center justify-center text-[#725E5E] hover:text-[#2F1D1D] transition shadow-xs cursor-pointer"
+                  title="Previous category"
                 >
                   <FaChevronLeft size={11} />
                 </button>
@@ -522,7 +487,8 @@ export default function HomePage() {
                     const idx = filterTabs.indexOf(activeTab);
                     setActiveTab(filterTabs[(idx + 1) % filterTabs.length]);
                   }}
-                  className="w-8 h-8 rounded-full bg-[#FFFCF7] border border-[#F2E5D5] flex items-center justify-center text-[#725E5E] hover:text-[#2F1D1D] transition shadow-xs"
+                  className="w-8 h-8 rounded-full bg-[#FFFCF7] border border-[#F2E5D5] flex items-center justify-center text-[#725E5E] hover:text-[#2F1D1D] transition shadow-xs cursor-pointer"
+                  title="Next category"
                 >
                   <FaChevronRight size={11} />
                 </button>
@@ -530,42 +496,32 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Cards Grid */}
-          {loading ? (
-            <div className="text-center py-20 text-[#8C7676] font-bold">
-              Preparing your feast menu...
-            </div>
-          ) : filteredDishes.length === 0 ? (
-            <div className="text-center py-16 bg-[#FFFCF7] rounded-3xl border border-dashed border-[#EADBCC] p-8">
-              <p className="text-base font-extrabold text-[#2F1D1D]">No dishes found matching this mood/filter!</p>
-              <button
-                onClick={() => { setActiveTab("All"); setSelectedMood(null); setSearchQuery(""); }}
-                className="mt-4 px-6 py-2 bg-[#F65C45] text-white rounded-full text-xs font-black shadow-md hover:bg-[#E04B35]"
-              >
-                Reset All Filters
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {filteredDishes.map((item, idx) => (
-                <Card 
-                  key={item.id || idx} 
-                  item={item} 
-                  badge={
-                    idx === 0 ? "Bestseller" :
-                    idx === 1 ? "Popular" :
-                    idx === 2 ? "New" : null
-                  }
-                />
-              ))}
-            </div>
-          )}
+          {/* Food Grid with Skeletons and Empty State */}
+          <FoodGrid
+            items={filteredDishes}
+            loading={loading}
+            emptyTitle={isDbEmpty ? "Supabase Database Empty" : "No Dishes Found"}
+            emptyMessage={
+              isDbEmpty
+                ? "Your Supabase tables are ready but contain 0 records. Run the seed script to instantly populate 5 restaurants and 30 dishes!"
+                : "No dishes found matching this mood or search query. Try clearing filters!"
+            }
+            emptyType={isDbEmpty ? "database_empty" : "filter"}
+            onReset={() => {
+              setActiveTab("All");
+              setSelectedMood(null);
+              setSearchQuery("");
+            }}
+            badgeResolver={(item, idx) => (
+              idx === 0 ? "Bestseller" : idx === 1 ? "Popular" : idx === 2 ? "New" : null
+            )}
+          />
 
         </div>
       </section>
 
       {/* ============================================================== */}
-      {/* 5. "TODAY'S TINY CHALLENGE" BANNER                             */}
+      {/* 6. "TODAY'S TINY CHALLENGE" BANNER                             */}
       {/* ============================================================== */}
       <section id="challenge-section" className="px-4 sm:px-8 lg:px-14 py-6">
         <div className="max-w-7xl mx-auto bg-gradient-to-r from-[#FFC857] via-[#FFD066] to-[#FFBC3B] rounded-3xl p-6 sm:p-10 border border-[#F4BE49] shadow-lg relative overflow-hidden">
@@ -590,7 +546,7 @@ export default function HomePage() {
               <div className="pt-2">
                 <button
                   onClick={handleTryChallenge}
-                  className="px-6 py-3 bg-[#F65C45] hover:bg-[#E04B35] text-white font-extrabold text-xs sm:text-sm rounded-full shadow-md hover:shadow-lg transition-all active:scale-95 flex items-center gap-1.5"
+                  className="px-6 py-3 bg-[#F65C45] hover:bg-[#E04B35] text-white font-extrabold text-xs sm:text-sm rounded-full shadow-md hover:shadow-lg transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
                 >
                   <span>Try challenge</span>
                   <span>➔</span>
@@ -624,7 +580,7 @@ export default function HomePage() {
       </section>
 
       {/* ============================================================== */}
-      {/* 6. "YOUR IMAGINARY FEAST" LIVE TRAY SECTION                     */}
+      {/* 7. "YOUR IMAGINARY FEAST" LIVE TRAY SECTION                     */}
       {/* ============================================================== */}
       <section ref={feastSectionRef} className="px-4 sm:px-8 lg:px-14 py-12">
         <div className="max-w-7xl mx-auto">
@@ -708,18 +664,18 @@ export default function HomePage() {
 
               {/* Action Buttons */}
               <div className="space-y-3 pt-2">
-                <button
-                  onClick={handleServeFeast}
-                  className="w-full py-3.5 bg-[#F65C45] hover:bg-[#E04B35] text-white font-extrabold text-sm sm:text-base rounded-full shadow-lg shadow-[#F65C45]/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                <Link
+                  href="/checkout"
+                  className="w-full py-3.5 bg-[#F65C45] hover:bg-[#E04B35] text-white font-extrabold text-sm sm:text-base rounded-full shadow-lg shadow-[#F65C45]/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <span>🪄</span>
-                  <span>Serve my feast</span>
+                  <span>Serve my feast &amp; Customize</span>
                   <span>➔</span>
-                </button>
+                </Link>
 
                 <button
                   onClick={handleShareCreation}
-                  className="w-full py-3 bg-[#FFFCF7] hover:bg-white text-[#2F1D1D] border-2 border-[#EADBCC] hover:border-[#2F1D1D] font-extrabold text-sm rounded-full transition-all flex items-center justify-center gap-2 shadow-xs"
+                  className="w-full py-3 bg-[#FFFCF7] hover:bg-white text-[#2F1D1D] border-2 border-[#EADBCC] hover:border-[#2F1D1D] font-extrabold text-sm rounded-full transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer"
                 >
                   <FaShareAlt size={13} />
                   <span>Share your creation</span>
@@ -728,17 +684,17 @@ export default function HomePage() {
 
               {/* 4 Bottom Micro-Actions */}
               <div className="grid grid-cols-4 gap-2 pt-4 border-t border-[#F5EAD9] text-center">
-                <button 
-                  onClick={() => showToast('📥 Imaginary snapshot saved to gallery!')}
+                <Link 
+                  href="/checkout"
                   className="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-[#FFF7EA] text-[#7A6464] hover:text-[#2F1D1D] transition-colors"
                 >
                   <FaDownload size={14} />
                   <span className="text-[10px] font-extrabold leading-tight">Download as image</span>
-                </button>
+                </Link>
 
                 <button 
                   onClick={handleShareCreation}
-                  className="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-[#FFF7EA] text-[#7A6464] hover:text-[#2F1D1D] transition-colors"
+                  className="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-[#FFF7EA] text-[#7A6464] hover:text-[#2F1D1D] transition-colors cursor-pointer"
                 >
                   <FaShareAlt size={14} />
                   <span className="text-[10px] font-extrabold leading-tight">Share with friends</span>
@@ -751,7 +707,7 @@ export default function HomePage() {
                       showToast('🔄 Feast remixed with new random craving!');
                     }
                   }}
-                  className="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-[#FFF7EA] text-[#7A6464] hover:text-[#2F1D1D] transition-colors"
+                  className="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-[#FFF7EA] text-[#7A6464] hover:text-[#2F1D1D] transition-colors cursor-pointer"
                 >
                   <FaSyncAlt size={14} />
                   <span className="text-[10px] font-extrabold leading-tight">Remix this feast</span>
@@ -759,10 +715,10 @@ export default function HomePage() {
 
                 <button 
                   onClick={handleTryChallenge}
-                  className="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-[#FFF7EA] text-[#7A6464] hover:text-[#2F1D1D] transition-colors"
+                  className="flex flex-col items-center gap-1.5 p-2 rounded-xl hover:bg-[#FFF7EA] text-[#7A6464] hover:text-[#2F1D1D] transition-colors cursor-pointer"
                 >
                   <FaTrophy size={14} />
-                  <span className="text-[10px] font-extrabold leading-tight">Try a new challenge</span>
+                  <span className="text-[10px] font-extrabold leading-tight">Try a challenge</span>
                 </button>
               </div>
 
@@ -774,21 +730,23 @@ export default function HomePage() {
       </section>
 
       {/* ============================================================== */}
-      {/* 7. FLOATING BOTTOM-RIGHT CART ACTION PILL                      */}
+      {/* 8. FLOATING BOTTOM-RIGHT CART ACTION PILL                      */}
       {/* ============================================================== */}
-      <div className="fixed bottom-6 right-6 z-40">
-        <button
-          onClick={toggleCart}
-          className="px-6 py-3.5 bg-[#F65C45] hover:bg-[#E04B35] text-white rounded-full font-black text-sm shadow-2xl hover:shadow-[#F65C45]/30 active:scale-95 transition-all flex items-center gap-2 border-2 border-white/60"
-        >
-          <FaShoppingCart size={15} />
-          <span>My feast · {totalItemsCount} {totalItemsCount === 1 ? 'dish' : 'dishes'}</span>
-          <span>➔</span>
-        </button>
-      </div>
+      {totalItemsCount > 0 && (
+        <div className="fixed bottom-6 right-6 z-40">
+          <button
+            onClick={toggleCart}
+            className="px-6 py-3.5 bg-[#F65C45] hover:bg-[#E04B35] text-white rounded-full font-black text-sm shadow-2xl hover:shadow-[#F65C45]/30 active:scale-95 transition-all flex items-center gap-2 border-2 border-white/60 cursor-pointer"
+          >
+            <FaShoppingCart size={15} />
+            <span>My feast · {totalItemsCount} {totalItemsCount === 1 ? 'dish' : 'dishes'}</span>
+            <span>➔</span>
+          </button>
+        </div>
+      )}
 
       {/* ============================================================== */}
-      {/* 8. FOOTER                                                      */}
+      {/* 9. FOOTER                                                      */}
       {/* ============================================================== */}
       <footer className="border-t border-[#F2E5D5] bg-[#FFF7EA] px-4 sm:px-8 lg:px-14 py-12 text-[#7A6464]">
         <div className="max-w-7xl mx-auto space-y-8">
