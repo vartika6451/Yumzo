@@ -1,6 +1,6 @@
-# 🍔 Yumzo - Full-Stack Food Delivery Platform
+# 🍔 Yumzo - Unified Next.js Full-Stack Food Delivery Platform
 
-Welcome to **Yumzo**, a modern, end-to-end food delivery application built to simulate platforms like UberEats or DoorDash. The project features a responsive React frontend, a robust Express backend API, Socket.io for real-time synchronization, MongoDB for persistence, and Stripe for checkout payments.
+Welcome to **Yumzo**, a modern, end-to-end food delivery application built to simulate platforms like UberEats or DoorDash. The project is completely unified into a single **Next.js** full-stack architecture featuring a responsive React frontend, integrated Next.js API route handlers, Socket.io for real-time synchronization, MongoDB with Mongoose for persistence, and Stripe for checkout payments.
 
 ---
 
@@ -10,27 +10,58 @@ Here is a visual overview of the key views and dashboards implemented in Yumzo:
 
 | 🏠 Landing Page | 🧑‍💻 Customer Home |
 | :---: | :---: |
-| ![Landing Page](Yumzo/screenshots/landing.png) | ![Customer Dashboard](Yumzo/screenshots/customer_dashboard.png) |
+| ![Landing Page](screenshots/landing.png) | ![Customer Dashboard](screenshots/customer_dashboard.png) |
 
 | 🍣 Interactive Menu | 🏪 Restaurant Kitchen Dashboard |
 | :---: | :---: |
-| ![Food Menu](Yumzo/screenshots/food_menu.png) | ![Kitchen Dashboard](Yumzo/screenshots/kitchen_dashboard.png) |
+| ![Food Menu](screenshots/food_menu.png) | ![Kitchen Dashboard](screenshots/kitchen_dashboard.png) |
 
 | 🚴 Delivery Driver Dashboard |
 | :---: |
-| ![Driver Dashboard](Yumzo/screenshots/driver_dashboard.png) |
+| ![Driver Dashboard](screenshots/driver_dashboard.png) |
 
 ---
 
 ## 🛠️ Architecture
 
-This repository is structured as a monorepo:
+The repository is structured as a clean, unified Next.js project:
 
 ```text
-Food Website/
-├── backend/            # Express.js, Socket.io, MongoDB, and Stripe Integration
-├── Yumzo/              # React 19 (Vite), Tailwind CSS v4, Zustand, Framer Motion
-└── screenshots/        # Application showcase images
+Yumzo/
+├── public/                     # Static media assets
+│   ├── images/                 # All 40 curated cuisine & food images
+│   ├── videos/                 # Hero background video (food.mp4)
+│   └── screenshots/            # Showcase images
+├── src/
+│   ├── app/                    # Next.js App Router (Pages & API Route Handlers)
+│   │   ├── page.jsx            # Video Hero Landing Page
+│   │   ├── home/               # Customer Home (Browse by Cuisine & Search)
+│   │   ├── login/              # Sign In page
+│   │   ├── signup/             # Sign Up page
+│   │   ├── account/            # Order history & reordering
+│   │   ├── orders/[id]/        # Real-time Order Tracker with Socket.io
+│   │   ├── order-success/[id]/ # Payment success confirmation
+│   │   ├── order-cancelled/    # Payment cancelled screen
+│   │   ├── dashboard/
+│   │   │   ├── restaurant/     # Kanban-style kitchen dashboard
+│   │   │   └── driver/         # Delivery driver dispatch & pickup queue
+│   │   └── api/                # Unified Next.js backend API routes
+│   │       ├── auth/           # Login, Register, Logout
+│   │       ├── restaurants/    # Restaurants & menus
+│   │       ├── orders/         # Orders & status management
+│   │       ├── payments/       # Stripe checkout & webhooks
+│   │       ├── dashboard/      # Restaurant kitchen orders
+│   │       └── driver/         # Available pickups for drivers
+│   ├── components/             # Reusable UI components (Navbar, Cart, Card, Tracker, etc.)
+│   ├── data/                   # Menu and Restaurant datasets
+│   ├── hooks/                  # Socket.io client hook (useSocket)
+│   ├── lib/                    # MongoDB connection caching, Socket.io emitter, JWT, Auth helpers
+│   ├── models/                 # Mongoose models (User, Restaurant, MenuItem, Order)
+│   └── store/                  # Zustand state stores (useCartStore, useAuthStore)
+├── server.js                   # Node server uniting Next.js with Socket.io on one port
+├── seed.js                     # MongoDB seeding script
+├── package.json                # Project dependencies & scripts
+└── next.config.mjs             # Next.js configuration
 ```
 
 ---
@@ -40,23 +71,23 @@ Food Website/
 ### 🧑‍💻 Customer Journey
 - **Video Hero Landing Page**: Modern landing screen with smooth scroll animations.
 - **Browse by Cuisine**: Filter menus dynamically (Indian, Chinese, Italian, Japanese).
-- **Interactive Cart**: Slide-out cart displaying quantities, subtotal calculations, and item counts.
-- **Stripe Checkout**: Redirects to Stripe for secure processing.
+- **Interactive Cart**: Slide-out cart displaying quantities, subtotal calculations, promo codes (`YUMZO10`), and item counts.
+- **Stripe Checkout**: Integrated checkout for secure payment processing.
 
 ### 🏪 Restaurant Kitchen Dashboard
 - **Kanban-Style Live tracking**: Column stages for **Accepted**, **Preparing**, and **Ready**.
-- **Real-Time Synchronization**: Instantly update orders via Socket.io notifications.
+- **Real-Time Synchronization**: Instantly broadcast status updates via Socket.io.
 
 ### 🚴 Delivery Driver App
-- **Availability State**: Toggle Online/Offline.
+- **Availability State**: Online/Offline active queue.
 - **Available Pickups**: Live queue displaying orders marked as "Ready" from the kitchen.
-- **Real-time status updates**: Drivers assign themselves to orders and update status to Out for Delivery / Delivered.
+- **Real-time status updates**: Drivers accept pickups and advance orders to "Out for Delivery" and "Delivered".
 
 ---
 
 ## 🚀 Getting Started
 
-Follow these simple steps to run both parts of the application locally.
+Follow these simple steps to run Yumzo locally in 1 unified command.
 
 ### Prerequisites
 - Node.js (v18+)
@@ -65,55 +96,36 @@ Follow these simple steps to run both parts of the application locally.
 
 ---
 
-### 1. Backend Server Setup
+### Setup & Run
 
-1. Navigate to the backend directory:
-   ```bash
-   cd backend
-   ```
-2. Install dependencies:
+1. **Install Dependencies**:
    ```bash
    npm install
    ```
-3. Set up the Environment Variables:
-   Create a `.env` file in the `backend` folder with the following variables:
+
+2. **Environment Variables**:
+   Create a `.env` file in the root directory (a template `.env.example` is provided):
    ```env
-   PORT=5000
-   MONGO_URI=your_mongodb_connection_uri
-   JWT_SECRET=your_jwt_secret
+   PORT=3000
    NODE_ENV=development
+   MONGO_URI=mongodb://127.0.0.1:27017/yumzo
+   JWT_SECRET=your_jwt_secret_key
    STRIPE_SECRET_KEY=your_stripe_secret_key
    STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
+   NEXT_PUBLIC_SOCKET_URL=http://localhost:3000
    ```
-4. Seed the Database:
-   Populate the MongoDB collections with sample restaurants and menus:
+
+3. **Seed the Database** (Optional):
+   Populate MongoDB with sample restaurants, menus, and a demo user:
    ```bash
    npm run seed
    ```
-5. Start the server:
+
+4. **Start the Development Server**:
    ```bash
    npm run dev
    ```
-   The backend will run on `http://localhost:5000` with WebSocket connections accepted.
-
----
-
-### 2. Frontend React Setup
-
-1. Navigate to the frontend directory:
-   ```bash
-   cd ../Yumzo
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
-4. Access the App:
-   Open [http://localhost:5173](http://localhost:5173) in your browser.
+   Open [http://localhost:3000](http://localhost:3000) in your browser. Both Next.js and Socket.io run simultaneously on the same port!
 
 ---
 
@@ -122,10 +134,10 @@ Follow these simple steps to run both parts of the application locally.
 To easily experience the full-stack flow, Yumzo includes a **Role Switcher** in the main navigation header:
 
 1. **Customer**:
-   - Browse the menu, add items (e.g. Sushi, Ramen), and click **Checkout** in the Cart.
+   - Browse the menu at `/home`, add items (e.g. Sushi, Ramen), and click **Checkout** in the Cart.
 2. **Restaurant**:
-   - Change your role to **Restaurant** in the dropdown. You will be redirected to `/dashboard/restaurant`.
+   - Change your role to **Kitchen** in the dropdown or navigate to `/dashboard/restaurant`.
    - Your order will appear in the **Accepted** column. Click to advance it to **Preparing**, then **Ready**.
 3. **Driver**:
-   - Change your role to **Driver**. You will be redirected to `/dashboard/driver`.
-   - Toggle **Online**. The order will appear under **Available Pickups**. Click to pick it up and transition it to delivered.
+   - Change your role to **Driver** or navigate to `/dashboard/driver`.
+   - The order will appear under **Available Pickups**. Click to accept the pickup, then tap **Complete & Mark as Delivered**.
