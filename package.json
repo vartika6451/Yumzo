@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@stripe/stripe-js": "^9.4.0",
+    "@supabase/supabase-js": "^2.118.0",
     "@tailwindcss/postcss": "^4.1.18",
     "bcryptjs": "^3.0.3",
     "cookie": "^1.0.2",
