@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, Clock, ChefHat, Bike, Home } from 'lucide-react';
 import useSocket from '../hooks/useSocket';
+import { useSupabaseRealtimeOrder } from '../hooks/useSupabaseRealtime';
 
 const STAGES = [
   { id: 'Placed', label: 'Order Placed', icon: Clock },
@@ -16,6 +17,12 @@ const OrderTracker = ({ orderId, initialStatus = 'Placed' }) => {
   const [status, setStatus] = useState(initialStatus);
   const [toastMsg, setToastMsg] = useState(null);
   const socket = useSocket();
+
+  // Listen for live updates via Supabase Realtime
+  useSupabaseRealtimeOrder(orderId, (newStatus) => {
+    setStatus(newStatus);
+    showToast(`Order status updated to: ${newStatus} (Supabase Realtime)`);
+  });
 
   useEffect(() => {
     if (!socket) return;

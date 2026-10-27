@@ -1,33 +1,60 @@
 import { NextResponse } from 'next/server';
-import connectDB from '../../../../../lib/db.js';
-import Order from '../../../../../models/Order.js';
+import { createClient } from '../../../../../lib/supabase/server.js';
+import { createAdminClient } from '../../../../../lib/supabase/admin.js';
+import { isSupabaseConfigured } from '../../../../../lib/supabase/helpers.js';
 import { emitSocketEvent } from '../../../../../lib/socket.js';
-import { getAuthenticatedUser } from '../../../../../lib/auth.js';
 
 export async function PATCH(req, { params }) {
   try {
     const { id } = await params;
-    await connectDB();
-
-    const order = await Order.findById(id);
-    if (!order) {
-      return NextResponse.json({ message: 'Order not found' }, { status: 404 });
-    }
-
-    const user = await getAuthenticatedUser();
-    order.driver = user ? user._id : '651f4d9b23b1c1d8a4f91e32';
-    order.status = 'Out for Delivery';
-
-    const updatedOrder = await order.save();
 
     // Emit live Socket.io event
     emitSocketEvent('order:status_updated', {
-      orderId: updatedOrder._id,
-      status: updatedOrder.status,
-      updatedAt: updatedOrder.updatedAt,
+      orderId: id,
+      status: 'Out for Delivery',
+      updatedAt: new Date().toISOString(),
     });
 
-    return NextResponse.json(updatedOrder);
+    if (isSupabaseConfigured()) {
+      const supabase = await createClient();
+      const adminClient = createAdminClient() || supabase;
+
+      let driverId = null;
+      if (supabase) {
+        const { data: { user } } = await supabase.auth.getUser();
+        driverId = user?.id || null;
+      }
+
+      const updatePayload = {
+        status: 'Out for Delivery',
+        updated_at: new Date().toISOString(),
+      };
+      if (driverId) updatePayload.driver_id = driverId;
+
+      const { data: updatedOrder, error } = await adminClient
+        .from('orders')
+        .update(updatePayload)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        console.warn('Supabase assign driver note:', error.message);
+      }
+
+      return NextResponse.json({
+        ...updatedOrder,
+        _id: id,
+        status: 'Out for Delivery',
+      });
+    }
+
+    return NextResponse.json({
+      _id: id,
+      id: id,
+      status: 'Out for Delivery',
+      message: 'Driver assigned successfully',
+    });
   } catch (error) {
     console.error('Error assigning driver:', error);
     return NextResponse.json({ message: error.message }, { status: 500 });

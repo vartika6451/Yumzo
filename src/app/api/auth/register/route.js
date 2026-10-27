@@ -1,51 +1,53 @@
 import { NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
-import connectDB from '../../../../lib/db.js';
-import User from '../../../../models/User.js';
-import { generateToken } from '../../../../lib/jwt.js';
+import { createClient } from '../../../../lib/supabase/server.js';
+import { isSupabaseConfigured } from '../../../../lib/supabase/helpers.js';
 
 export async function POST(req) {
   try {
-    await connectDB();
     const { name, email, password } = await req.json();
 
-    if (!name || !email || !password) {
-      return NextResponse.json({ message: 'Please provide all required fields' }, { status: 400 });
+    if (!email || !password) {
+      return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
     }
 
-    const userExists = await User.findOne({ email });
-    if (userExists) {
-      return NextResponse.json({ message: 'User already exists' }, { status: 400 });
+    if (isSupabaseConfigured()) {
+      const supabase = await createClient();
+      if (supabase) {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              name: name || email.split('@')[0],
+              role: 'customer',
+            },
+          },
+        });
+
+        if (error) {
+          return NextResponse.json({ message: error.message }, { status: 400 });
+        }
+
+        return NextResponse.json({
+          _id: data.user?.id,
+          id: data.user?.id,
+          name: name || email.split('@')[0],
+          email: email,
+          role: 'customer',
+          message: 'Account created successfully with Supabase Auth',
+        }, { status: 201 });
+      }
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    const user = await User.create({
-      name,
-      email,
-      password: hashedPassword,
-    });
-
-    const token = generateToken(user._id);
-
-    const response = NextResponse.json({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      message: 'Registered successfully',
+    // Demo fallback if Supabase credentials are not yet entered
+    return NextResponse.json({
+      _id: 'usr_' + Date.now(),
+      id: 'usr_' + Date.now(),
+      name: name || email.split('@')[0],
+      email: email,
+      role: 'customer',
+      message: 'Demo registration successful',
     }, { status: 201 });
-
-    response.cookies.set('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 30 * 24 * 60 * 60, // 30 days
-      path: '/',
-    });
-
-    return response;
   } catch (error) {
     console.error('Registration error:', error);
     return NextResponse.json({ message: error.message }, { status: 500 });

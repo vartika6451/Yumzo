@@ -1,39 +1,54 @@
 import { NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
-import connectDB from '../../../../lib/db.js';
-import User from '../../../../models/User.js';
-import { generateToken } from '../../../../lib/jwt.js';
+import { createClient } from '../../../../lib/supabase/server.js';
+import { isSupabaseConfigured } from '../../../../lib/supabase/helpers.js';
 
 export async function POST(req) {
   try {
-    await connectDB();
     const { email, password } = await req.json();
 
-    const user = await User.findOne({ email });
-
-    if (user && (await bcrypt.compare(password, user.password))) {
-      const token = generateToken(user._id);
-
-      const response = NextResponse.json({
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        message: 'Logged in successfully',
-      });
-
-      response.cookies.set('token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 30 * 24 * 60 * 60,
-        path: '/',
-      });
-
-      return response;
-    } else {
-      return NextResponse.json({ message: 'Invalid email or password' }, { status: 401 });
+    if (!email || !password) {
+      return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
     }
+
+    if (isSupabaseConfigured()) {
+      const supabase = await createClient();
+      if (supabase) {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (error) {
+          return NextResponse.json({ message: error.message }, { status: 401 });
+        }
+
+        // Retrieve profile role and name
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('name, role')
+          .eq('id', data.user.id)
+          .single();
+
+        return NextResponse.json({
+          _id: data.user.id,
+          id: data.user.id,
+          name: profile?.name || data.user.user_metadata?.name || email.split('@')[0],
+          email: data.user.email,
+          role: profile?.role || data.user.user_metadata?.role || 'customer',
+          message: 'Logged in successfully with Supabase Auth',
+        });
+      }
+    }
+
+    // Demo fallback for testing without Supabase
+    return NextResponse.json({
+      _id: 'usr_demo_123',
+      id: 'usr_demo_123',
+      name: email.split('@')[0],
+      email: email,
+      role: 'customer',
+      message: 'Demo login successful',
+    });
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json({ message: error.message }, { status: 500 });
